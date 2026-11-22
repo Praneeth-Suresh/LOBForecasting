@@ -2,61 +2,72 @@
 
 Limit order books are noisy, high-frequency market microstructure data. This notebook studies whether short-horizon mid-price movement can be predicted from order-book features, then compares simple baselines with deeper sequence models and interpretability probes.
 
-## Why This Matters
+**Start with the [chronological baseline](#chronological-baseline).** It
+provides a repeatable, CPU-only check of whether a fitted linear model
+beats an always-stationary rule on the same unseen data. The
+[exploratory notebook](baseline.ipynb) is retained for the model and
+interpretability history, not as evidence of a time-held-out result.
 
-Mid-price forecasting is a useful applied ML problem because it forces the model to deal with class imbalance, temporal dependence, and weak signal-to-noise ratios. The project is also a good testbed for interpretability methods: a model that predicts price movement should expose which levels, sides, or engineered features drive its decisions.
+## Chronological baseline
 
-## Method Overview
+Use the NoAuction / DecPre version of FI-2010 and its anchored fold files.
+Put the four files below anywhere under `Data/`, with only one copy of
+each filename. The script does not pool overlapping training folds or
+different normalizations.
 
-```mermaid
-flowchart LR
-    A[Kaggle LOB text files] --> B[Parse order-book rows]
-    B --> C[Clean and normalize features]
-    C --> D[Create train/validation/test splits]
-    D --> E[Logistic baseline]
-    D --> F[MLP baseline]
-    D --> G[DeepLOB-style sequence model]
-    E --> H[Accuracy and class report]
-    F --> H
-    G --> H
-    G --> I[Feature ablation, saliency, integrated gradients]
+| Partition | Files | Period |
+| --- | --- | --- |
+| Fit the scaler and model | `Train_Dst_NoAuction_DecPre_CF_7.txt` | Trading days 1–7 |
+| Report validation | `Test_Dst_NoAuction_DecPre_CF_7.txt` | Trading day 8 |
+| Report final test | `Test_Dst_NoAuction_DecPre_CF_8.txt`, `Test_Dst_NoAuction_DecPre_CF_9.txt` | Trading days 9–10 |
+
+Using Python 3.12, from the repository root:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-baseline.txt
+python chronological_baseline.py --data-dir Data
 ```
 
-## Current Results
+The report includes accuracy, macro-F1, and a confusion matrix for
+logistic regression and the always-stationary rule, plus observation
+counts and SHA-256 hashes of the inputs. Confusion matrices use the
+original class-ID order `1, 2, 3`; class `2` is stationary. All 144
+feature rows are used, with the first label row as the target (a
+10-event horizon). Scaling is fitted on the training file only. No
+model settings are selected from the validation or test scores.
 
-The checked-in notebook reports these representative metrics on the current split:
+To verify the pipeline without downloading the market data:
 
-| Model | Validation accuracy | Test accuracy | Notes |
-|---|---:|---:|---|
-| Logistic regression baseline | 0.6087 | 0.7091 | Strong baseline for simple normalized features |
-| MLP baseline | 0.5494 | 0.5943 | Did not outperform the simpler baseline on this split |
-| DeepLOB-style sequence model | 0.8040 validation during training | Notebook includes sequence evaluation workflow | Best direction for further work |
+```bash
+python -m unittest discover -s tests -v
+```
 
-These numbers should be treated as exploratory notebook results, not production trading claims.
+The tests use synthetic FI-2010-shaped files. They demonstrate that the
+command runs and follows the fixed file split; they do not measure
+forecasting performance. No new FI-2010 metrics are claimed here.
+
+## Exploratory notebook
+
+[`baseline.ipynb`](baseline.ipynb) explores logistic regression, an
+MLP, a DeepLOB-style sequence model, and attribution methods. Its
+archived results use a different workflow: preprocessing combined
+input files before splitting, and the sequence model randomly split
+overlapping windows. The saved scores are useful for development
+history but cannot establish how the models compare on later trading
+days. The script above does not reproduce the notebook's deep models.
 
 ## Dataset
 
-This project uses the benchmark dataset by Ntakaris et al., available through Kaggle:
+This project uses the FI-2010 benchmark by Ntakaris et al.:
 
-- Dataset: <https://www.kaggle.com/datasets/praanj/limit-orderbook-data?resource=download>
-- Paper: Ntakaris, Adamantios, et al. "Benchmark dataset for mid-price forecasting of limit order book data with machine learning methods." *Journal of Forecasting* 37.8 (2018): 852-866.
+- [Dataset mirror on Kaggle](https://www.kaggle.com/datasets/praanj/limit-orderbook-data?resource=download)
+- [Benchmark paper](https://arxiv.org/abs/1705.03233)
+- [DeepLOB paper](https://arxiv.org/abs/1808.03668) for the anchored-fold and chronological evaluation context
 
-After downloading, create a `Data/` folder in the repository root and place the dataset text files there.
-
-## Reproduce
-
-1. Install a Python environment with Jupyter, pandas, scikit-learn, PyTorch, matplotlib, and Captum.
-2. Download the Kaggle dataset into `Data/`.
-3. Open `baseline.ipynb`.
-4. Run the notebook from top to bottom.
-
-The notebook contains the full data preparation, model training, evaluation, and interpretability workflow.
-
-## Limitations
-
-- The dataset is external and not committed.
-- The results depend on the current split and notebook state.
-- The project is research exploration, not a deployed financial system.
-- Further work should add a scriptable training entry point, fixed environment file, and saved result artifacts.
-
-Interested in this area? Email me at praneeth.suresh.s@gmail.com.
+The files contain already-preprocessed features and forward labels from
+the benchmark. The chronological script keeps its own fitting separate
+from evaluation; it does not reconstruct feature or label generation
+from the raw market feed. The data is not committed. This is a research
+exercise, not a deployed or tested trading strategy.
